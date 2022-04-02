@@ -26,8 +26,8 @@ int main(){
 
 	unsigned char test={0x00};
 
-	FILE *writer = fopen("PES1UG19CS065.JPG","wb");
-	FILE *writer1 = fopen("PES1UG19CS065.BMP","wb");
+	FILE *writer = fopen("output.JPG","wb");
+	FILE *writer1 = fopen("output.BMP","wb");
 
 	unsigned char size_bmp[4];
 
