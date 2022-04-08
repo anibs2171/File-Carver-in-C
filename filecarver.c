@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <math.h>
+#include <unistd.h>
+
 
 u_int32_t bytes_to_decimal(unsigned char *bytes)
 {
@@ -15,6 +15,7 @@ u_int32_t bytes_to_decimal(unsigned char *bytes)
 }
 
 int main(){
+
 	FILE *ptr;
 	ptr=fopen("samples", "rb");
 
@@ -26,10 +27,11 @@ int main(){
 
 	unsigned char test={0x00};
 
-	FILE *writer = fopen("output.JPG","wb");
-	FILE *writer1 = fopen("output.BMP","wb");
+	FILE *ftemp;
 
 	unsigned char size_bmp[4];
+
+	unsigned char cname[20];
 
 	unsigned char cur;
 	long long int start1=0;
@@ -43,12 +45,19 @@ int main(){
 		printf("file %s opened\n", "samples");
 	}
 
+	char hostbuffer[256];
+    int hostname;
+
+    hostname = gethostname(hostbuffer, sizeof(hostbuffer));
+	printf ("Extracted the files with log in name %s on host %s\n", getlogin(), hostbuffer);
+
 	int l;
 
 	printf("\nBMP CARVING\n");
 
-	fwrite(&bmp_header, sizeof(bmp_header), 1, writer1);
+	//fwrite(&bmp_header, sizeof(bmp_header), 1, writer1);
 
+	int counter=0;
 	while(!feof(ptr)){
 		l=0;
 		fread (&cur, 1, 1, ptr);
@@ -57,15 +66,12 @@ int main(){
 			l++;
 			fread (&cur, 1, 1, ptr);
 			start1++;
-			//as files start at a sector beginning
-			if(cur==bmp_header[l] && (start1-2)%512==0){
+			if(cur==bmp_header[l]){
 				l++;
 				if(l==2){
 					//printf("%s\n", "bmp_header found");
 					//break;
 				}
-
-				FILE *startbmp=ptr;
 
 				fread(&cur, 1, 1, ptr);
 				start1++;
@@ -80,9 +86,10 @@ int main(){
 				start1++;
 				size_bmp[0]=cur;
 
-				//first smaller bmp file ---> i.e which has 00 in the last byte in little endian
-
-				if(cur==test){
+				bmp_size=bytes_to_decimal(size_bmp);
+				
+				//Setting a limit to file size 
+				if(cur==test && bmp_size<300000){
 					printf("%s", "bmp_header found at : ");
 					printf("%lld\n", start1-6);
 					printf("size in big endian : ");
@@ -91,23 +98,27 @@ int main(){
 						printf("%x", size_bmp[i]);
 					}
 
-					bmp_size=bytes_to_decimal(size_bmp);
-
 					printf("\nbmp size : %d\n", bmp_size);
 
+					sprintf(cname, "anibs2171_%d.BMP", counter);
+                	ftemp = fopen(cname, "wb");
+                	fwrite(&bmp_header, sizeof(bmp_header), 1, ftemp);
+					
+
+					start1=start1-4;
 					int count=0;
-					fseek(ptr, start1-4, SEEK_SET);
+					fseek(ptr, start1, SEEK_SET);
 					while(count<bmp_size+4){
+						start1++;
 						fread (&cur, 1, 1, ptr);
-						fwrite(&cur, sizeof(cur), 1, writer1);
+						fwrite(&cur, sizeof(cur), 1, ftemp);
 						count++;
 					}
-
-					break;
+					fclose(ftemp);
+					counter++;
+					bmp_size=0;
+					//break;
 				}
-
-					
-				
 			}
 			l=0;
 		}
@@ -119,9 +130,11 @@ int main(){
 
 	printf("\nJPEG CARVING\n");
 
+	counter=0;
+
 	int j;
 
-	while(!feof(ptr1)){
+	while(!feof(ptr1) && counter<=4){
 		j=0;
 		start++;
 		fread (&cur, 1, 1, ptr1);
@@ -139,7 +152,42 @@ int main(){
 					if(j==3){
 						printf("%s", "jpeg_header found at : ");
 						printf("%lld\n", start);
-						break;
+						int k;
+
+						sprintf(cname, "anibs2171_%d.JPG", counter);
+                		ftemp = fopen(cname, "wb");
+
+						fwrite(&jpeg_header, sizeof(jpeg_header), 1, ftemp);	
+
+						printf("%s\n", "JPEG HEX DATA");
+
+						while(!feof(ptr1)){
+							k=0;
+							start++;
+							fread (&cur, 1, 1, ptr1);
+							fwrite(&cur, sizeof(cur), 1, ftemp);
+							if(cur==jpeg_trailer[k]){
+								k++;
+								start++;
+								fread (&cur, 1, 1, ptr1);
+								fwrite(&cur, sizeof(cur), 1, ftemp);
+								if(cur==jpeg_trailer[k]){
+									printf("%x ---> end of trailer \n", cur);
+									k++;
+									counter++;
+									if(k==2){
+										printf("%s", "jpeg_trailer found at : ");
+										printf("%lld\n", start);
+										fclose(ftemp);
+										break;
+									}
+								}
+								k=0;
+							}
+							else{
+								k=0;
+							}
+						}
 					}
 				}
 				j=0;
@@ -152,40 +200,8 @@ int main(){
 			j=0;
 		}
 	}
-
-	int k;
-
-	fwrite(&jpeg_header, sizeof(jpeg_header), 1, writer);	
-
-	printf("%s\n", "JPEG HEX DATA");
-
-	while(!feof(ptr1)){
-		k=0;
-		start++;
-		fread (&cur, 1, 1, ptr1);
-		fwrite(&cur, sizeof(cur), 1, writer);
-		if(cur==jpeg_trailer[k]){
-			k++;
-			start++;
-			fread (&cur, 1, 1, ptr1);
-			fwrite(&cur, sizeof(cur), 1, writer);
-			if(cur==jpeg_trailer[k]){
-				printf("%x ---> end of trailer \n", cur);
-				k++;
-				if(k==2){
-					printf("%s", "jpeg_trailer found at : ");
-					printf("%lld\n", start);
-					break;
-				}
-			}
-			k=0;
-		}
-		else{
-			k=0;
-		}
-	}
-
-
-
+	
+	fclose(ptr);
+	fclose(ptr1);
 	return 0;
 }
